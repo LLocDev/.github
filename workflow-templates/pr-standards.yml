@@ -1,0 +1,16 @@
+# Checks this pull request against the LLocDev contribution standards: Conventional Commits
+# title and commits, and a filled-in PR description. The rules and the checker live in
+# LLocDev/.github (CONTRIBUTING.md). The ruleset requires the "pr-standards / check" status.
+name: pr-standards
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-standards:
+    uses: LLocDev/.github/.github/workflows/standards.yml@main

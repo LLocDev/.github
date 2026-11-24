@@ -1,0 +1,56 @@
+# Reusable check for the LLocDev contribution standards (CONTRIBUTING.md): Conventional Commits
+# PR title and commits, and a filled-in PR description. Every repository calls it from a short
+# .github/workflows/pr-standards.yml (see workflow-templates/pr-standards.yml), which makes the
+# status check "pr-standards / check" that the repository's ruleset requires.
+name: standards
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # The checker lives in this repository. Other repositories use it from main; pull
+      # requests here use their own version, so a change to the checker tests itself.
+      - name: Get the checker
+        uses: actions/checkout@v4
+        with:
+          repository: LLocDev/.github
+          ref: ${{ github.repository == 'LLocDev/.github' && github.sha || 'main' }}
+          path: .standards
+          persist-credentials: false
+
+      - name: Get the PR description and commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.md"
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" | jq -s 'add // []' > "$RUNNER_TEMP/commits.json"
+
+      # Only in this repository: the checker's own tests, inside the required check so a
+      # failing test blocks the merge.
+      - name: Test the checker
+        if: github.repository == 'LLocDev/.github'
+        working-directory: .standards
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+
+      - name: Check the title, commits and description
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REF: ${{ github.head_ref }}
+          IS_BOT: ${{ github.event.pull_request.user.type == 'Bot' }}
+        run: |
+          bot=""
+          if [ "$IS_BOT" = "true" ]; then bot="--bot"; fi
+          python3 .standards/scripts/check_pr.py --title "$PR_TITLE" --head "$HEAD_REF" \
+            --body-file "$RUNNER_TEMP/body.md" --commits-file "$RUNNER_TEMP/commits.json" $bot

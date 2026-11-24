@@ -1,0 +1,6 @@
+{
+  "name": "LLocDev PR standards",
+  "description": "Required in every LLocDev repository: checks the PR title, commits and description against the contribution standards.",
+  "iconName": "octicon checklist",
+  "categories": ["Automation"]
+}
