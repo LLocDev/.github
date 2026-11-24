@@ -226,6 +226,8 @@ def main(argv=None):
         commits = git_commits(args.git_range)
 
     problems, notices = check(args.title, body, commits, args.bot, args.head)
+    if not (args.commits_file or args.git_range):
+        notices.append("Commits not checked: pass --git-range <target>..HEAD (or --commits-file) to check them.")
     if report(problems, notices):
         return 1
     print("PR title, commits and description follow the LLocDev standards.")
