@@ -11,20 +11,24 @@
                     "sha", "commit.message" and "parents"
     --git-range     read the commits from the local repository instead, e.g. origin/develop..HEAD
     --title-file    read the PR title from a file instead (safer for titles with backticks or quotes)
-    --head          the PR's head branch. Commits are not checked when it is release/*, or main
-                    (the merge back to develop after a release): those commits were checked in
-                    their own PRs, or predate the standards.
+    --head          the PR's head branch. Bad commit messages fail the check only on hotfix/*
+                    branches, whose commits reach main through a merge commit. On other branches
+                    the squash merge replaces them with the PR title and description, so they are
+                    warnings. On release/* and main (the merge back after a release) commits are
+                    not checked at all: they were checked in their own PRs, or predate the standards.
     --bot           the PR was opened by a bot: skip the description check
     --header        check one commit header (the first line of a commit message) and nothing else
 
-Prints each problem and exits 1 if there are any. Prints a GitHub Actions notice (not a
-failure) when the description has no Jira link.
+Prints each problem and exits 1 if there are any. Prints a GitHub Actions warning (not a
+failure) for each commit message problem outside hotfix/* branches, and a notice when the
+description has no Jira link.
 
 The rules:
   - The PR title and the first line of every commit follow Conventional Commits
     (https://www.conventionalcommits.org): <type>(<optional scope>)<optional !>: <description>.
     Merge commits are skipped, and so are fixup!/squash! commits, which the squash merge
     folds away. GitHub's own revert title, Revert "<original header>", is accepted.
+    A bad commit message fails the check only on a hotfix/* branch; elsewhere it is a warning.
   - The PR title has no Jira key: it becomes the commit subject when the PR is squash-merged.
   - The description has each required section from the PR template, filled in. "N/A" with
     a reason counts as filled in; an HTML comment on its own does not.
@@ -41,6 +45,8 @@ GITHUB_REVERT = re.compile(r'^Revert ".+"$')
 AUTOSQUASH = re.compile(r"^(?:fixup|squash|amend)! ")
 # Head branches whose commits are not checked: their commits were checked in their own PRs.
 UNCHECKED_HEADS = re.compile(r"^(?:release/.+|main)$")
+# Head branches whose commits survive the merge (merge commit, not squash): bad messages fail.
+BLOCKING_COMMIT_HEADS = re.compile(r"^hotfix/.+$")
 MAX_HEADER = 100
 # Jira projects whose keys must stay out of PR titles. A generic KEY-123 pattern would also
 # catch names like UTF-8 or SHA-256, so list the projects.
@@ -147,10 +153,14 @@ def has_jira_link(body):
 
 
 def check(title, body, commits, bot=False, head=None):
-    """Return (problems, notices) for this pull request."""
+    """Return (problems, warnings, notices) for this pull request. Only problems fail it."""
     problems = title_problems(title)
+    warnings = []
     if not (head and UNCHECKED_HEADS.match(head)):
-        problems += commit_problems(commits)
+        if head and BLOCKING_COMMIT_HEADS.match(head):
+            problems += commit_problems(commits)
+        else:
+            warnings += commit_problems(commits)
     notices = []
     if not bot:
         problems += body_problems(body)
@@ -158,7 +168,7 @@ def check(title, body, commits, bot=False, head=None):
             notices.append(
                 "No Jira ticket linked. If this work has a ticket, add its link in the '## Jira' section."
             )
-    return problems, notices
+    return problems, warnings, notices
 
 
 def git_commits(rev_range):
@@ -177,9 +187,11 @@ def git_commits(rev_range):
     return commits
 
 
-def report(problems, notices):
+def report(problems, notices, warnings=()):
     for n in notices:
         print("::notice::%s" % n)
+    for w in warnings:
+        print("::warning::%s (not blocking: the squash merge replaces commit messages with the PR title and description)" % w)
     for p in problems:
         print("::error::%s" % p)
     if problems:
@@ -225,12 +237,13 @@ def main(argv=None):
     elif args.git_range:
         commits = git_commits(args.git_range)
 
-    problems, notices = check(args.title, body, commits, args.bot, args.head)
+    problems, warnings, notices = check(args.title, body, commits, args.bot, args.head)
     if not (args.commits_file or args.git_range):
         notices.append("Commits not checked: pass --git-range <target>..HEAD (or --commits-file) to check them.")
-    if report(problems, notices):
+    if report(problems, notices, warnings):
         return 1
-    print("PR title, commits and description follow the LLocDev standards.")
+    print("PR title and description follow the LLocDev standards%s."
+          % (" (see the commit message warnings)" if warnings else ""))
     return 0
 
 

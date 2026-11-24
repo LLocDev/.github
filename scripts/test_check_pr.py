@@ -88,9 +88,20 @@ class ExemptionTests(unittest.TestCase):
     def test_release_and_back_merge_heads_skip_commits(self):
         bad = [commit("f" * 40, "Add a contributor guide")]
         for head in ("release/1.3", "main"):
-            self.assertEqual(check_pr.check("chore(release): 1.3.0", GOOD_BODY, bad, head=head)[0], [], head)
-        for head in ("feature/KAN-1-x", "hotfix/1.3.1", None):
-            self.assertEqual(len(check_pr.check("fix: x", GOOD_BODY, bad, head=head)[0]), 1, head)
+            problems, warnings, _ = check_pr.check("chore(release): 1.3.0", GOOD_BODY, bad, head=head)
+            self.assertEqual((problems, warnings), ([], []), head)
+
+    def test_hotfix_commits_block(self):
+        # hotfix/* merges into main with a merge commit, so its commit messages reach history.
+        bad = [commit("f" * 40, "Add a contributor guide")]
+        problems, warnings, _ = check_pr.check("fix: x", GOOD_BODY, bad, head="hotfix/1.3.1")
+        self.assertEqual((len(problems), warnings), (1, []))
+
+    def test_squashed_branch_commits_only_warn(self):
+        bad = [commit("f" * 40, "Update stm32f4xx_it.c")]
+        for head in ("feature/KAN-1-x", "tools/x", "skill/x", None):
+            problems, warnings, _ = check_pr.check("fix: x", GOOD_BODY, bad, head=head)
+            self.assertEqual((problems, len(warnings)), ([], 1), head)
 
 
 class BodyTests(unittest.TestCase):
@@ -131,7 +142,7 @@ class BodyTests(unittest.TestCase):
 
     def test_jira_optional_but_noticed(self):
         body = GOOD_BODY.replace("https://2520-llc.atlassian.net/browse/KAN-65", "")
-        problems, notices = check_pr.check("fix: x", body, [])
+        problems, _, notices = check_pr.check("fix: x", body, [])
         self.assertEqual(problems, [])
         self.assertEqual(len(notices), 1)
 
@@ -139,8 +150,8 @@ class BodyTests(unittest.TestCase):
         self.assertFalse(check_pr.has_jira_link("<!-- https://2520-llc.atlassian.net/browse/KAN-1 -->"))
 
     def test_bot_skips_description(self):
-        problems, notices = check_pr.check("chore(deps): bump x", "", [], bot=True)
-        self.assertEqual((problems, notices), ([], []))
+        problems, warnings, notices = check_pr.check("chore(deps): bump x", "", [], bot=True)
+        self.assertEqual((problems, warnings, notices), ([], [], []))
 
 
 class CliTests(unittest.TestCase):
@@ -161,7 +172,8 @@ class CliTests(unittest.TestCase):
     def test_fail_prints_errors(self):
         r = self.run_cli("Graph fix", "", [commit("a" * 40, "wip")])
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(r.stdout.count("::error::"), 3)
+        self.assertEqual(r.stdout.count("::error::"), 2)  # title and description
+        self.assertEqual(r.stdout.count("::warning::"), 1)  # the commit: no --head, so not a hotfix
 
     def test_header_mode(self):
         script = os.path.join(HERE, "check_pr.py")

@@ -29,6 +29,7 @@ Every commit message starts with a [Conventional Commits](https://www.convention
 - **Breaking change:** put `!` before the colon (`feat(protocol)!: drop the v1 commands`) and explain the break in the body.
 - **Description:** lowercase, imperative ("add", not "added"), no full stop. The whole header is at most 100 characters.
 - Exempt: merge commits (Git writes their messages), `fixup!` and `squash!` commits (the squash merge folds them away), and GitHub's own revert message, `Revert "<original header>"`.
+- **How it's enforced:** a squash merge replaces a branch's commit messages with the PR title and description, so on most PRs a bad commit message shows as a warning on the check and doesn't block the merge. Fix the habit on your next commit; there's no need to rewrite the branch. On `hotfix/*` branches the commits reach `main` through a merge commit, so there a bad commit message fails the check.
 - Bots: set the commit prefix so their PRs pass, e.g. for Dependabot `commit-message: {prefix: "chore", include: "scope"}` in `.github/dependabot.yml`.
 
 ## Pull request titles
@@ -60,7 +61,8 @@ A required section can't be left empty or hold only the template's comment. "N/A
 
 - PRs are squash-merged. The PR title becomes the commit subject and the description becomes the commit body, so the history on the target branch carries the full context. Repositories with a release flow also allow merge commits for release merges.
 - A PR needs one approving review, every required check passing, and every review thread resolved.
-- PRs from a `release/*` branch, and the merge of `main` back into the default branch, are merged with a merge commit and skip the commit-message check: their commits were checked in their own PRs. The title and description are still checked.
+- PRs from a `release/*` branch, and the merge of `main` back into the default branch, are merged with a merge commit and skip the commit-message check: their commits are the squash commits of PRs already checked (or predate these standards). The title and description are still checked.
+- `hotfix/*` PRs into `main` are merged with a merge commit, so their commit messages must pass the check.
 - Editing the title or description re-runs `pr-standards`, so you don't need to push again.
 
 ## When `pr-standards` fails
@@ -69,7 +71,7 @@ The check's log lists each problem.
 
 - **Title:** edit it on the PR page.
 - **Description:** fill in the sections it names.
-- **Commit messages:** reword them and force-push your own branch (never a shared one):
+- **Commit messages** (fails only on `hotfix/*`; elsewhere a warning you can leave): reword them and force-push your own branch (never a shared one):
   ```
   git rebase -i origin/<target branch>     # change "pick" to "reword" on each commit to fix
   git push --force-with-lease
