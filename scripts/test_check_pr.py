@@ -180,6 +180,16 @@ class CliTests(unittest.TestCase):
                                 "--body-file", bf], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stdout)
 
+    def test_notice_when_commits_not_given(self):
+        with tempfile.TemporaryDirectory() as d:
+            bf = os.path.join(d, "body")
+            with open(bf, "w", encoding="utf-8") as f:
+                f.write(GOOD_BODY)
+            r = subprocess.run([sys.executable, os.path.join(HERE, "check_pr.py"), "--title", "fix: x",
+                                "--body-file", bf], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("Commits not checked", r.stdout)
+
     def test_title_required_without_header(self):
         r = subprocess.run([sys.executable, os.path.join(HERE, "check_pr.py")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2)
